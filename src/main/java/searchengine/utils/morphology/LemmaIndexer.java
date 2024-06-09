@@ -1,8 +1,8 @@
 package searchengine.utils.morphology;
 
+import lombok.RequiredArgsConstructor;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
-import org.springframework.beans.factory.annotation.Autowired;
 import searchengine.model.Index;
 import searchengine.model.Lemma;
 import searchengine.model.Page;
@@ -12,29 +12,19 @@ import searchengine.repositories.LemmaRepository;
 
 import java.io.IOException;
 import java.util.Map;
-
+@RequiredArgsConstructor
 public class LemmaIndexer {
-    @Autowired
-    private LemmaRepository repositoryLemma;
-    @Autowired
-    private IndexRepository repositoryIndex;
-    private Site site;
-    private Page page;
-
-
-    public LemmaIndexer(LemmaRepository repositoryLemma, IndexRepository repositoryIndex, Site site, Page page) {
-        this.repositoryLemma = repositoryLemma;
-        this.repositoryIndex = repositoryIndex;
-        this.site = site;
-        this.page = page;
-    }
+    private final LemmaRepository repositoryLemma;
+    private final IndexRepository repositoryIndex;
+    private final Site site;
+    private final Page page;
 
     public void indexing() throws IOException {
         Map<String, Integer> lemmas = getLemmasOfPage();
         lemmas.forEach(this::saveLemmaAndIndex);
     }
 
-    private Map<String, Integer> getLemmasOfPage() throws IOException {
+    private Map<String, Integer> getLemmasOfPage() {
         LemmaFinder finder = new LemmaFinder();
 
         String content = page.getContent();

@@ -2,7 +2,6 @@ package searchengine.services;
 
 
 import lombok.RequiredArgsConstructor;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import searchengine.config.SitesList;
 import searchengine.config.UserAgents;
@@ -28,14 +27,11 @@ import java.util.concurrent.ForkJoinPool;
 @Service
 @RequiredArgsConstructor
 public class IndexingServiceImpl implements IndexingService{
-    @Autowired
-    private SiteRepository repositorySite;
-    @Autowired
-    private PageRepository repositoryPage;
-    @Autowired
-    private LemmaRepository repositoryLemma;
-    @Autowired
-    private IndexRepository repositoryIndex;
+
+    private final SiteRepository repositorySite;
+    private final PageRepository repositoryPage;
+    private final LemmaRepository repositoryLemma;
+    private final IndexRepository repositoryIndex;
     private final SitesList sitesList;
     private final UserAgents userAgent;
 
@@ -109,14 +105,24 @@ public class IndexingServiceImpl implements IndexingService{
         String siteUrl = siteCfg.getUrl();
         Site mainSite = repositorySite.findSiteByUrl(siteUrl);
         if (mainSite == null) {
-            return new IndexingResponse("Данная страница является сайтом, указанным в конфигурационном файле. " +
+            return new IndexingResponse("Сайт данной страницы не был проиндексирован. " +
                     "Требуется индексация!");
         }
 
         String path = "/" + url.replaceAll(realUrl(mainSite.getUrl()), "");
-        deletePage(path, mainSite);
+
+        Page oldPage = repositoryPage.findPageByPathAndSite(path, mainSite);
+        if (oldPage != null){
+            deletePage(oldPage);
+        }
 
         LinkParser parser = new LinkParser(mainSite, url, userAgent);
+        return resultIndexingPage(parser);
+    }
+
+    private IndexingResponse resultIndexingPage(LinkParser parser){
+        Site mainSite = parser.getSite();
+        String url = parser.getUrl();
         try {
             parser.parse();
             int code = parser.getCode();
@@ -138,7 +144,7 @@ public class IndexingServiceImpl implements IndexingService{
             repositorySite.save(mainSite);
             System.out.println("Данная ссылка привела к ошибке: " + url);
             e.printStackTrace();
-            return new IndexingResponse("Данная ссылка привела к ошибке! " + e + ": " + e.getMessage());
+            return new IndexingResponse("Индексация ссылки привела к ошибке. " + e + ": " + e.getMessage());
         }
     }
 
@@ -154,7 +160,7 @@ public class IndexingServiceImpl implements IndexingService{
 
     private String realUrl(String url) {
         String realUrl = url.replace("www.", "");
-        realUrl = realUrl.endsWith("/") ? realUrl : url + "/";
+        realUrl = realUrl.endsWith("/") ? realUrl : realUrl + "/";
         return realUrl;
     }
     private searchengine.config.Site findSiteCfgByUrl(String url){
@@ -166,18 +172,15 @@ public class IndexingServiceImpl implements IndexingService{
         return null;
     }
 
-    private void deletePage(String path, Site site){
-        Page page = repositoryPage.findPageByPathAndSite(path,site);
-        if (page != null) {
-            List<Index> indexesOfPage = repositoryIndex.findByPage(page);
-            indexesOfPage.forEach(index ->{
-                Lemma lemma = index.getLemma();
-                lemma.setFrequency(lemma.getFrequency() - 1);
-                repositoryLemma.save(lemma);
-            });
-            repositoryIndex.deleteAll(indexesOfPage);
-            repositoryPage.delete(page);
-        }
+    private void deletePage(Page page){
+        List<Index> indexesOfPage = repositoryIndex.findByPage(page);
+        indexesOfPage.forEach(index ->{
+            Lemma lemma = index.getLemma();
+            lemma.setFrequency(lemma.getFrequency() - 1);
+            repositoryLemma.save(lemma);
+        });
+        repositoryIndex.deleteAll(indexesOfPage);
+        repositoryPage.delete(page);
     }
 
     private Page savePage(LinkParser parser){

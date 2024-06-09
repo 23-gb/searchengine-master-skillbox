@@ -2,19 +2,19 @@ package searchengine.services;
 
 import lombok.RequiredArgsConstructor;
 import org.jsoup.Jsoup;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import searchengine.dto.search.DataSearchItem;
 import searchengine.dto.search.SearchResponse;
 import searchengine.model.*;
 import searchengine.repositories.IndexRepository;
 import searchengine.repositories.LemmaRepository;
-import searchengine.repositories.PageRepository;
 import searchengine.repositories.SiteRepository;
 import searchengine.utils.morphology.LemmaFinder;
 import searchengine.utils.relevance.RelevancePage;
 import searchengine.utils.snippet.SnippetSearch;
 
+import java.time.LocalTime;
+import java.time.temporal.ChronoUnit;
 import java.util.*;
 
 
@@ -22,20 +22,20 @@ import java.util.*;
 @RequiredArgsConstructor
 public class SearchServiceImpl implements SearchService {
 
-    @Autowired
-    private SiteRepository repositorySite;
-    @Autowired
-    private PageRepository repositoryPage;
-    @Autowired
-    private LemmaRepository repositoryLemma;
-    @Autowired
-    private IndexRepository repositoryIndex;
+    private final SiteRepository repositorySite;
+    private final LemmaRepository repositoryLemma;
+    private final IndexRepository repositoryIndex;
+    private static String error = "";
+    private static List<DataSearchItem> data;
 
     @Override
     public SearchResponse getSearch(String query, String siteUrl, Integer offset, Integer limit) {
+        System.out.println("** START SEARCH OF QUERY ** " + LocalTime.now().truncatedTo(ChronoUnit.SECONDS));
+        System.out.println(" - QUERY: " + query);
 
         if (query.isEmpty()){
-            return new SearchResponse("Запрос не введен");
+            error = "Запрос не введен";
+            return errorSearch(error);
         }
 
         offset = (offset == null) ? 0 : offset;
@@ -44,38 +44,62 @@ public class SearchServiceImpl implements SearchService {
 
         LemmaFinder finder = new LemmaFinder();
         Set<String> queryLemmas = finder.collectLemmas(query).keySet();
-        List<Index> foundIndexes;
+        List<Index> indexes = foundIndexes(queryLemmas, siteUrl);
 
-        if (siteUrl == null) {
-            List<Site> allSites = (List<Site>) repositorySite.findAll();
-            for (Site site : allSites){
-                if (site.getStatus() == SiteStatus.INDEXING) {
-                    return new SearchResponse("Дождитесь окончания индексации");
-                }
-            }
-            foundIndexes = searchByAll(queryLemmas, allSites);
-        }
-        else {
-            Site site = repositorySite.findSiteByUrl(siteUrl);
-            if (site.getStatus() != SiteStatus.INDEXED){
-                return new SearchResponse("Выбранный сайт ещё не проиндексирован");
-            }
-            foundIndexes = searchBySite(queryLemmas, site);
-        }
-        if (foundIndexes.isEmpty()){
-            return new SearchResponse("Ничего не найдено");
+        if (!error.isEmpty()){
+            return errorSearch(error);
         }
 
-        List<DataSearchItem> data = getDataList(foundIndexes);
+        data = getDataList(indexes);
+        endSearchPrint(data.size());
 
-        return buildResponse(offset, limit, data);
+        return buildResponse(offset, limit);
     }
 
-    private List<Index> searchByAll(Set<String> queryLemmas, List<Site> sites) {
+    private void endSearchPrint(int countPages) {
+        System.out.println(" RESULT SEARCH: found " + countPages + " pages");
+        System.out.println("** END SEARCH OF QUERY ** " + LocalTime.now().truncatedTo(ChronoUnit.SECONDS));
+    }
+
+    private SearchResponse errorSearch(String error){
+        System.out.println(" - ERROR: " + error);
+        System.out.println("** END SEARCH OF QUERY ** " + LocalTime.now().truncatedTo(ChronoUnit.SECONDS));
+        SearchServiceImpl.error = "";
+        return new SearchResponse(error);
+    }
+
+    private List<Index> foundIndexes(Set<String> queryLemmas, String siteUrl){
+        List<Index> indexList;
+        if (siteUrl == null) {
+            System.out.println(" - SITE: ALL SITES" );
+            indexList = searchByAll(queryLemmas);
+        }
+        else {
+            System.out.println(" - SITE: " + siteUrl);
+            Site site = repositorySite.findSiteByUrl(siteUrl);
+            if (!site.getStatus().equals(SiteStatus.INDEXED)){
+                error = "Выбранный сайт ещё не проиндексирован";
+                return new ArrayList<>();
+            }
+            indexList = searchBySite(queryLemmas, site);
+        }
+        if (indexList.isEmpty() && error.isEmpty()){
+            error = "Ничего не найдено";
+        }
+        return indexList;
+    }
+
+    private List<Index> searchByAll(Set<String> queryLemmas) {
         List<Index> indexList = new ArrayList<>();
-        sites.forEach(site -> {
+        List<Site> allSites = (List<Site>) repositorySite.findAll();
+        for (Site site : allSites){
+            if (site.getStatus().equals(SiteStatus.INDEXING)) {
+                error = "Дождитесь окончания индексации всех сайтов";
+                return new ArrayList<>();
+            }
             indexList.addAll(searchBySite(queryLemmas, site));
-        });
+        }
+
         return indexList;
     }
 
@@ -123,6 +147,7 @@ public class SearchServiceImpl implements SearchService {
             item.setSnippet( SnippetSearch.find(text, page.getRankWords().keySet()) );
 
             result.add(item);
+            System.out.println(item.getSite() + item.getUri());
         }
 
         return result;
@@ -161,7 +186,7 @@ public class SearchServiceImpl implements SearchService {
         return pageSet;
     }
 
-    private SearchResponse buildResponse(Integer offset, Integer limit, List<DataSearchItem> data) {
+    private SearchResponse buildResponse(Integer offset, Integer limit) {
         if (offset + limit >= data.size()) {
             limit = data.size() - offset;
         }

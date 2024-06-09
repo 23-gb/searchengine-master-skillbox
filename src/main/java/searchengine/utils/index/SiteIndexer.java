@@ -1,6 +1,6 @@
 package searchengine.utils.index;
 
-import org.springframework.beans.factory.annotation.Autowired;
+import lombok.RequiredArgsConstructor;
 import searchengine.config.UserAgents;
 import searchengine.model.Page;
 import searchengine.model.Site;
@@ -21,17 +21,13 @@ import java.util.List;
 import java.util.Set;
 import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.RecursiveAction;
-
+@RequiredArgsConstructor
 public class SiteIndexer extends RecursiveAction {
     private final ForkJoinPool pool;
-    @Autowired
     private final PageRepository repositoryPage;
-    @Autowired
     private final SiteRepository repositorySite;
-    @Autowired
-    private LemmaRepository repositoryLemma;
-    @Autowired
-    private IndexRepository repositoryIndex;
+    private final LemmaRepository repositoryLemma;
+    private final IndexRepository repositoryIndex;
     private final String url;
     private final Site site;
     private final Set<String> allLinks;
@@ -66,14 +62,7 @@ public class SiteIndexer extends RecursiveAction {
         try {
             parser.parse();
         } catch (IOException e) {
-            if (url.equals(site.getUrl())) {
-                site.setStatus(SiteStatus.FAILED);
-                site.setStatusTime(new Date());
-                site.setLastError(e + ": " + e.getMessage());
-                repositorySite.save(site);
-            }
-            System.out.println("Данная ссылка привела к ошибке: " + url);
-            e.printStackTrace();
+            exceptionOfParse(e);
         }
 
            Page page = savePage(parser);
@@ -126,5 +115,18 @@ public class SiteIndexer extends RecursiveAction {
             site.setStatusTime(new Date());
             repositorySite.save(site);
         }
+    }
+
+    private void exceptionOfParse(IOException e){
+        String mainSiteUrl =  site.getUrl().replace("www.", "");
+        mainSiteUrl = mainSiteUrl.endsWith("/") ? mainSiteUrl : mainSiteUrl + "/";
+        if (url.equals(mainSiteUrl)) {
+            site.setStatus(SiteStatus.FAILED);
+            site.setStatusTime(new Date());
+            site.setLastError(e + ": " + e.getMessage());
+            repositorySite.save(site);
+        }
+        System.out.println("Данная ссылка привела к ошибке: " + url);
+        e.printStackTrace();
     }
 }

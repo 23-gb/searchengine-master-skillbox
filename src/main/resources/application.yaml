@@ -20,7 +20,7 @@ indexing-settings:
   sites:
     - url: https://sendel.ru/
       name: sendel
-    - url: http://www.playback.ru/
+    - url: https://www.playback.ru/
       name: playback
 
 user-agent-settings:
