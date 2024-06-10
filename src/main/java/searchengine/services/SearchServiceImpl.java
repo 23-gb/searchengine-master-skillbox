@@ -26,10 +26,15 @@ public class SearchServiceImpl implements SearchService {
     private final LemmaRepository repositoryLemma;
     private final IndexRepository repositoryIndex;
     private static String error = "";
+    private static String lastQuery;
     private static List<DataSearchItem> data;
 
     @Override
     public SearchResponse getSearch(String query, String siteUrl, Integer offset, Integer limit) {
+        if (query.equals(lastQuery)) {
+            return buildResponse(offset, limit);
+        }
+
         System.out.println("** START SEARCH OF QUERY ** " + LocalTime.now().truncatedTo(ChronoUnit.SECONDS));
         System.out.println(" - QUERY: " + query);
 
@@ -50,6 +55,7 @@ public class SearchServiceImpl implements SearchService {
             return errorSearch(error);
         }
 
+        lastQuery = query;
         data = getDataList(indexes);
         endSearchPrint(data.size());
 
@@ -147,7 +153,6 @@ public class SearchServiceImpl implements SearchService {
             item.setSnippet( SnippetSearch.find(text, page.getRankWords().keySet()) );
 
             result.add(item);
-            System.out.println(item.getSite() + item.getUri());
         }
 
         return result;
